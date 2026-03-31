@@ -1,3 +1,21 @@
-# Contents of requirements.txt
+# Core HTTP and feed parsing
+requests>=2.31.0
+feedparser>=6.0.10
 
-# Your code here...
+# PDF extraction
+PyMuPDF>=1.23.0
+
+# OpenAI API
+openai>=1.14.0
+
+# Environment variable management
+python-dotenv>=1.0.0
+
+# CLI framework
+click>=8.1.7
+
+# Web UI
+streamlit>=1.31.0
+
+# Typing backports (Python 3.9 compatibility)
+typing-extensions>=4.9.0
