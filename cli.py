@@ -64,9 +64,9 @@ def cli() -> None:
     "--sources",
     "-s",
     multiple=True,
-    default=["semantic_scholar", "arxiv"],
+    default=["openalex_informs", "semantic_scholar"],
     show_default=True,
-    help="Sources to search (semantic_scholar, arxiv). Repeatable.",
+    help="Sources to search (openalex_informs, semantic_scholar, arxiv, ssrn). Repeatable.",
 )
 @click.option(
     "--skip-download",
@@ -142,9 +142,9 @@ def run_command(
     "--sources",
     "-s",
     multiple=True,
-    default=["semantic_scholar", "arxiv"],
+    default=["openalex_informs", "semantic_scholar"],
     show_default=True,
-    help="Sources to search. Repeatable.",
+    help="Sources to search (openalex_informs, semantic_scholar, arxiv, ssrn). Repeatable.",
 )
 @click.option(
     "--json-output",

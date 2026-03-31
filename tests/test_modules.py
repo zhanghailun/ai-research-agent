@@ -129,12 +129,13 @@ class TestSearch:
             "doi": "",
             "url": "",
             "open_access_pdf": "",
-            "source": "SemanticScholar",
+            "venue": "Management Science",
+            "source": "OpenAlex",
         }
-        paper_b = {**paper_a, "source": "arXiv"}
+        paper_b = {**paper_a, "source": "SemanticScholar"}
 
-        with patch("search.search_semantic_scholar", return_value=[paper_a]), \
-             patch("search.search_arxiv", return_value=[paper_b]):
+        with patch("search.search_openalex_informs", return_value=[paper_a]), \
+             patch("search.search_semantic_scholar", return_value=[paper_b]):
             results = search_all(["test"], limit=5, deduplicate=True)
 
         # Should have only 1 after deduplication
@@ -189,6 +190,7 @@ class TestSearch:
             "doi": "",
             "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=9999",
             "open_access_pdf": "",
+            "venue": "",
             "source": "SSRN",
         }
 
@@ -199,6 +201,169 @@ class TestSearch:
 
         assert len(results) == 1
         assert results[0]["source"] == "SSRN"
+
+    def test_search_openalex_informs_success(self):
+        """Mock a successful OpenAlex response for INFORMS journals."""
+        from search import search_openalex_informs
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "results": [
+                {
+                    "id": "https://openalex.org/W1234567",
+                    "title": "Supply Chain Optimization in Management Science",
+                    "abstract_inverted_index": {
+                        "This": [0],
+                        "is": [1],
+                        "an": [2],
+                        "abstract": [3],
+                    },
+                    "authorships": [
+                        {"author": {"display_name": "Alice Zhang"}},
+                        {"author": {"display_name": "Bob Lee"}},
+                    ],
+                    "publication_year": 2022,
+                    "doi": "https://doi.org/10.1287/mnsc.2022.001",
+                    "open_access": {"oa_url": ""},
+                    "best_oa_location": {"pdf_url": ""},
+                    "primary_location": {
+                        "source": {"display_name": "Management Science"}
+                    },
+                }
+            ]
+        }
+
+        with patch("search.requests.get", return_value=mock_response):
+            results = search_openalex_informs(["supply chain"], limit=5)
+
+        assert len(results) == 1
+        assert results[0]["title"] == "Supply Chain Optimization in Management Science"
+        assert results[0]["venue"] == "Management Science"
+        assert results[0]["doi"] == "10.1287/mnsc.2022.001"
+        assert results[0]["source"] == "OpenAlex"
+        assert results[0]["abstract"] == "This is an abstract"
+
+    def test_search_openalex_informs_failure(self):
+        """Mock a failed OpenAlex request."""
+        import requests
+        from search import search_openalex_informs
+
+        with patch("search.requests.get", side_effect=requests.RequestException("timeout")):
+            results = search_openalex_informs(["test"], limit=5)
+        assert results == []
+
+    def test_filter_informs_papers(self):
+        """Ensure filter_informs_papers keeps only INFORMS journal papers."""
+        from search import filter_informs_papers
+
+        papers = [
+            {"title": "MS Paper", "venue": "Management Science", "source": "SemanticScholar"},
+            {"title": "OR Paper", "venue": "Operations Research", "source": "SemanticScholar"},
+            {"title": "MSOM Paper", "venue": "Manufacturing & Service Operations Management", "source": "OpenAlex"},
+            {"title": "Other Paper", "venue": "Journal of Finance", "source": "SemanticScholar"},
+            {"title": "No Venue Paper", "venue": "", "source": "arXiv"},
+        ]
+
+        filtered = filter_informs_papers(papers)
+        assert len(filtered) == 3
+        titles = {p["title"] for p in filtered}
+        assert "MS Paper" in titles
+        assert "OR Paper" in titles
+        assert "MSOM Paper" in titles
+        assert "Other Paper" not in titles
+        assert "No Venue Paper" not in titles
+
+    def test_filter_informs_papers_case_insensitive(self):
+        """Venue matching must be case-insensitive."""
+        from search import filter_informs_papers
+
+        papers = [
+            {"title": "P1", "venue": "management science", "source": "SemanticScholar"},
+            {"title": "P2", "venue": "OPERATIONS RESEARCH", "source": "SemanticScholar"},
+            {"title": "P3", "venue": "msom", "source": "OpenAlex"},
+        ]
+        filtered = filter_informs_papers(papers)
+        assert len(filtered) == 3
+
+    def test_search_all_defaults_to_informs_sources(self):
+        """search_all should use openalex_informs and semantic_scholar by default."""
+        from search import search_all
+
+        informs_paper = {
+            "title": "Inventory Management",
+            "abstract": "MS paper",
+            "year": 2023,
+            "authors": ["Alice"],
+            "doi": "10.1287/mnsc.2023.001",
+            "url": "https://doi.org/10.1287/mnsc.2023.001",
+            "open_access_pdf": "",
+            "venue": "Management Science",
+            "source": "OpenAlex",
+        }
+
+        with patch("search.search_openalex_informs", return_value=[informs_paper]) as mock_oa, \
+             patch("search.search_semantic_scholar", return_value=[]) as mock_ss:
+            results = search_all(["inventory"], limit=5)
+
+        mock_oa.assert_called_once()
+        mock_ss.assert_called_once()
+        assert results[0]["venue"] == "Management Science"
+
+    def test_search_all_semantic_scholar_filtered(self):
+        """search_all should filter Semantic Scholar results to INFORMS journals."""
+        from search import search_all
+
+        ms_paper = {
+            "title": "Revenue Management",
+            "abstract": "MS paper",
+            "year": 2022,
+            "authors": [],
+            "doi": "",
+            "url": "",
+            "open_access_pdf": "",
+            "venue": "Management Science",
+            "source": "SemanticScholar",
+        }
+        other_paper = {
+            "title": "Finance Paper",
+            "abstract": "Finance",
+            "year": 2022,
+            "authors": [],
+            "doi": "",
+            "url": "",
+            "open_access_pdf": "",
+            "venue": "Journal of Finance",
+            "source": "SemanticScholar",
+        }
+
+        with patch("search.search_openalex_informs", return_value=[]), \
+             patch("search.search_semantic_scholar", return_value=[ms_paper, other_paper]):
+            results = search_all(["revenue"], limit=5, filter_journals=True)
+
+        assert len(results) == 1
+        assert results[0]["title"] == "Revenue Management"
+
+    def test_reconstruct_abstract(self):
+        """_reconstruct_abstract should reassemble inverted-index format correctly."""
+        from search import _reconstruct_abstract
+
+        inverted = {"Hello": [0], "world": [1], "foo": [2]}
+        assert _reconstruct_abstract(inverted) == "Hello world foo"
+
+    def test_reconstruct_abstract_multiposition(self):
+        """Words appearing at multiple positions should each be placed correctly."""
+        from search import _reconstruct_abstract
+
+        # "the" appears at positions 0 and 3; "cat" at 1; "sat" at 2
+        inverted = {"the": [0, 3], "cat": [1], "sat": [2]}
+        assert _reconstruct_abstract(inverted) == "the cat sat the"
+
+    def test_reconstruct_abstract_empty(self):
+        from search import _reconstruct_abstract
+
+        assert _reconstruct_abstract(None) == ""
+        assert _reconstruct_abstract({}) == ""
 
 
 # ---------------------------------------------------------------------------
@@ -468,13 +633,14 @@ class TestCLI:
                 "doi": "",
                 "url": "",
                 "open_access_pdf": "https://example.com/paper.pdf",
-                "source": "arXiv",
+                "venue": "Management Science",
+                "source": "OpenAlex",
             }
         ]
 
         runner = CliRunner()
-        with patch("search.search_semantic_scholar", return_value=[]), \
-             patch("search.search_arxiv", return_value=mock_papers):
+        with patch("search.search_openalex_informs", return_value=mock_papers), \
+             patch("search.search_semantic_scholar", return_value=[]):
             result = runner.invoke(cli, ["search", "supply", "chain"])
 
         assert result.exit_code == 0

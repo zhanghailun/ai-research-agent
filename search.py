@@ -1,12 +1,14 @@
 """
-search.py — Paper discovery via Semantic Scholar, arXiv, and SSRN.
+search.py — Paper discovery via Semantic Scholar, OpenAlex, arXiv, and SSRN.
 
 Public API
 ----------
 search_semantic_scholar(keywords, limit) -> list[dict]
-search_arxiv(keywords, limit)           -> list[dict]
-search_ssrn(keywords, limit)            -> list[dict]
-search_all(keywords, limit)             -> list[dict]
+search_openalex_informs(keywords, limit) -> list[dict]
+search_arxiv(keywords, limit)            -> list[dict]
+search_ssrn(keywords, limit)             -> list[dict]
+filter_informs_papers(papers)            -> list[dict]
+search_all(keywords, limit)              -> list[dict]
 """
 
 from __future__ import annotations
@@ -23,6 +25,43 @@ from bs4 import BeautifulSoup
 import config
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# INFORMS journal targeting
+# ---------------------------------------------------------------------------
+
+# Normalised (lower-cased) variants accepted as INFORMS venues
+INFORMS_JOURNAL_NAMES: frozenset[str] = frozenset({
+    "management science",
+    "operations research",
+    "manufacturing & service operations management",
+    "manufacturing and service operations management",
+    "msom",
+    "m&som",
+})
+
+# ISSNs for the three target INFORMS journals (print + online)
+_INFORMS_ISSNS: list[str] = [
+    "0025-1909",  # Management Science (print)
+    "1526-5501",  # Management Science (online)
+    "0030-364X",  # Operations Research (print)
+    "1526-5463",  # Operations Research (online)
+    "1523-4614",  # MSOM (print)
+    "1526-5498",  # MSOM (online)
+]
+
+
+def _is_informs_journal(venue: str) -> bool:
+    """Return True if *venue* is one of the target INFORMS journals."""
+    if not venue:
+        return False
+    return venue.lower().strip() in INFORMS_JOURNAL_NAMES
+
+
+def filter_informs_papers(papers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return only papers whose *venue* field matches a target INFORMS journal."""
+    return [p for p in papers if _is_informs_journal(p.get("venue", ""))]
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -46,6 +85,17 @@ def _safe_get(url: str, params: dict | None = None, timeout: int = 30) -> reques
         return None
 
 
+def _reconstruct_abstract(inverted_index: dict[str, list[int]] | None) -> str:
+    """Reconstruct a readable abstract from OpenAlex's inverted-index format."""
+    if not inverted_index:
+        return ""
+    position_word: dict[int, str] = {}
+    for word, positions in inverted_index.items():
+        for pos in positions:
+            position_word[pos] = word
+    return " ".join(position_word[i] for i in sorted(position_word))
+
+
 # ---------------------------------------------------------------------------
 # Semantic Scholar
 # ---------------------------------------------------------------------------
@@ -56,14 +106,17 @@ def search_semantic_scholar(keywords: list[str], limit: int = 20) -> list[dict[s
 
     Returns a list of paper dicts with normalised keys:
       title, abstract, year, authors, doi, url,
-      open_access_pdf, source
+      open_access_pdf, venue, source
     """
     query = " ".join(keywords)
     url = f"{config.SEMANTIC_SCHOLAR_BASE_URL}/paper/search"
     params = {
         "query": query,
         "limit": min(limit, 100),
-        "fields": "title,abstract,authors,year,externalIds,isOpenAccess,openAccessPdf,url",
+        "fields": (
+            "title,abstract,authors,year,externalIds,"
+            "isOpenAccess,openAccessPdf,url,venue,publicationVenue"
+        ),
     }
 
     logger.info("Searching Semantic Scholar for: %s (limit=%d)", query, limit)
@@ -76,6 +129,7 @@ def search_semantic_scholar(keywords: list[str], limit: int = 20) -> list[dict[s
     for paper in data:
         doi = (paper.get("externalIds") or {}).get("DOI", "")
         open_pdf = (paper.get("openAccessPdf") or {}).get("url", "")
+        venue = paper.get("venue", "") or (paper.get("publicationVenue") or {}).get("name", "")
         results.append({
             "title": paper.get("title", ""),
             "abstract": paper.get("abstract", ""),
@@ -84,10 +138,101 @@ def search_semantic_scholar(keywords: list[str], limit: int = 20) -> list[dict[s
             "doi": doi,
             "url": paper.get("url", ""),
             "open_access_pdf": open_pdf,
+            "venue": venue,
             "source": "SemanticScholar",
         })
 
     logger.info("Semantic Scholar returned %d papers", len(results))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# OpenAlex — INFORMS journals
+# ---------------------------------------------------------------------------
+
+_OPENALEX_HEADERS = {
+    "User-Agent": (
+        "ai-research-agent/1.0 (mailto:research@example.com)"
+    ),
+}
+
+
+def search_openalex_informs(keywords: list[str], limit: int = 20) -> list[dict[str, Any]]:
+    """
+    Search OpenAlex for papers published in the three target INFORMS journals:
+    Management Science, Operations Research, and MSOM.
+
+    Uses ISSN-based filtering so every returned paper is from one of these
+    journals.  Returns a normalised list matching the Semantic Scholar format.
+    """
+    query = " ".join(keywords)
+    issn_filter = "|".join(_INFORMS_ISSNS)
+    url = f"{config.OPENALEX_BASE_URL}/works"
+    params = {
+        "search": query,
+        "filter": f"primary_location.source.issn:{issn_filter}",
+        "per_page": min(limit, 200),
+        "sort": "relevance_score:desc",
+        "select": (
+            "id,title,abstract_inverted_index,authorships,"
+            "publication_year,doi,open_access,primary_location,best_oa_location"
+        ),
+    }
+
+    logger.info(
+        "Searching OpenAlex (INFORMS journals) for: %s (limit=%d)", query, limit
+    )
+    try:
+        resp = requests.get(
+            url,
+            params=params,
+            headers=_OPENALEX_HEADERS,
+            timeout=30,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        logger.warning("OpenAlex search failed: %s", exc)
+        return []
+
+    results: list[dict[str, Any]] = []
+    for work in resp.json().get("results", [])[:limit]:
+        doi = work.get("doi") or ""
+        if doi.startswith("https://doi.org/"):
+            doi = doi[len("https://doi.org/"):]
+
+        abstract = _reconstruct_abstract(work.get("abstract_inverted_index"))
+
+        authors = [
+            authorship.get("author", {}).get("display_name", "")
+            for authorship in (work.get("authorships") or [])
+        ]
+
+        venue = (
+            ((work.get("primary_location") or {}).get("source") or {})
+            .get("display_name", "")
+        )
+
+        oa_url = (
+            ((work.get("best_oa_location") or {}).get("pdf_url") or "")
+            or ((work.get("open_access") or {}).get("oa_url") or "")
+        )
+
+        work_id = work.get("id", "")
+        paper_url = f"https://doi.org/{doi}" if doi else work_id
+
+        results.append({
+            "title": work.get("title") or "",
+            "abstract": abstract,
+            "year": work.get("publication_year"),
+            "authors": [a for a in authors if a],
+            "doi": doi,
+            "url": paper_url,
+            "open_access_pdf": oa_url,
+            "venue": venue,
+            "source": "OpenAlex",
+        })
+
+    logger.info("OpenAlex (INFORMS) returned %d papers", len(results))
     return results
 
 
@@ -144,6 +289,7 @@ def search_arxiv(keywords: list[str], limit: int = 20) -> list[dict[str, Any]]:
             "doi": "",
             "url": getattr(entry, "id", ""),
             "open_access_pdf": pdf_url,
+            "venue": "",
             "source": "arXiv",
         })
 
@@ -238,6 +384,7 @@ def search_ssrn(keywords: list[str], limit: int = 20) -> list[dict[str, Any]]:
             "doi": "",
             "url": paper_url,
             "open_access_pdf": "",
+            "venue": "",
             "source": "SSRN",
         })
 
@@ -254,24 +401,56 @@ def search_all(
     limit: int = 20,
     sources: list[str] | None = None,
     deduplicate: bool = True,
+    filter_journals: bool = True,
 ) -> list[dict[str, Any]]:
     """
     Search multiple sources and return a combined, optionally deduplicated list.
 
     Parameters
     ----------
-    keywords   : list of keyword strings
-    limit      : max results *per source*
-    sources    : list of source names to query; defaults to ["semantic_scholar", "arxiv"]
-    deduplicate: remove papers with the same (normalised) title
+    keywords        : list of keyword strings
+    limit           : max results *per source*
+    sources         : list of source names to query; defaults to
+                      ["openalex_informs", "semantic_scholar"]
+    deduplicate     : remove papers with the same (normalised) title
+    filter_journals : when True, Semantic Scholar results are post-filtered to
+                      keep only papers from the target INFORMS journals
+                      (Management Science, Operations Research, MSOM).
+                      ``openalex_informs`` always returns only INFORMS papers
+                      regardless of this flag.
+
+    Notes
+    -----
+    The default sources are intentionally restricted to INFORMS-focused
+    channels.  Pass ``sources=["arxiv"]`` or ``sources=["ssrn"]`` explicitly
+    if broader coverage is needed.
     """
     if sources is None:
-        sources = ["semantic_scholar", "arxiv"]
+        sources = ["openalex_informs", "semantic_scholar"]
 
     all_papers: list[dict[str, Any]] = []
 
+    if "openalex_informs" in sources:
+        all_papers.extend(search_openalex_informs(keywords, limit=limit))
+        time.sleep(0.3)  # Be polite to the API
+
     if "semantic_scholar" in sources:
-        all_papers.extend(search_semantic_scholar(keywords, limit=limit))
+        # Fetch extra headroom so filtering still yields enough results
+        fetch_limit = min(limit * 3, 100) if filter_journals else limit
+        ss_papers = search_semantic_scholar(keywords, limit=fetch_limit)
+        if filter_journals:
+            filtered = filter_informs_papers(ss_papers)
+            if filtered:
+                ss_papers = filtered[:limit]
+            else:
+                logger.info(
+                    "No INFORMS papers found in Semantic Scholar results for %s; "
+                    "including all %d results as fallback",
+                    keywords,
+                    len(ss_papers),
+                )
+                ss_papers = ss_papers[:limit]
+        all_papers.extend(ss_papers)
         time.sleep(0.5)  # Be polite to the API
 
     if "arxiv" in sources:

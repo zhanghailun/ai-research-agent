@@ -24,9 +24,28 @@ SEMANTIC_SCHOLAR_API_KEY: str = os.getenv("SEMANTIC_SCHOLAR_API_KEY", "")
 SEMANTIC_SCHOLAR_BASE_URL: str = "https://api.semanticscholar.org/graph/v1"
 
 # ---------------------------------------------------------------------------
+# OpenAlex
+# ---------------------------------------------------------------------------
+OPENALEX_BASE_URL: str = "https://api.openalex.org"
+
+# ---------------------------------------------------------------------------
 # arXiv
 # ---------------------------------------------------------------------------
 ARXIV_BASE_URL: str = "http://export.arxiv.org/api/query"
+
+# ---------------------------------------------------------------------------
+# INFORMS journal targeting
+# ---------------------------------------------------------------------------
+# Human-readable journal names used in logging / UI
+INFORMS_JOURNAL_NAMES: list[str] = [
+    "Management Science",
+    "Operations Research",
+    "Manufacturing & Service Operations Management",
+]
+# When True, Semantic Scholar results are post-filtered to INFORMS journals
+FILTER_TO_INFORMS_JOURNALS: bool = os.getenv(
+    "FILTER_TO_INFORMS_JOURNALS", "true"
+).lower() in ("1", "true", "yes")
 
 # ---------------------------------------------------------------------------
 # Unpaywall (optional, for finding open-access PDFs by DOI)

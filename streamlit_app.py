@@ -70,8 +70,13 @@ max_results = st.sidebar.slider(
 
 sources_selected = st.sidebar.multiselect(
     "Search Sources",
-    options=["semantic_scholar", "arxiv", "ssrn"],
-    default=["semantic_scholar", "arxiv", "ssrn"],
+    options=["openalex_informs", "semantic_scholar", "arxiv", "ssrn"],
+    default=["openalex_informs", "semantic_scholar"],
+    help=(
+        "openalex_informs: ISSN-filtered search restricted to Management Science, "
+        "Operations Research, and MSOM.  semantic_scholar: broad search with "
+        "post-filtering to INFORMS journals where venue data is available."
+    ),
 )
 
 skip_download = st.sidebar.checkbox(
@@ -222,8 +227,10 @@ if "papers" in st.session_state:
     with tab1:
         st.subheader(f"Papers Found ({len(papers)})")
         for i, p in enumerate(papers, start=1):
+            venue = p.get("venue", "")
+            venue_label = f" · *{venue}*" if venue else ""
             with st.expander(
-                f"{i}. [{p.get('year', '?')}] {p.get('title', 'Untitled')} — {p.get('source', '')}"
+                f"{i}. [{p.get('year', '?')}] {p.get('title', 'Untitled')} — {p.get('source', '')}{venue_label}"
             ):
                 col_a, col_b = st.columns([3, 1])
                 with col_a:
@@ -231,6 +238,8 @@ if "papers" in st.session_state:
                     if len(p.get("authors", [])) > 5:
                         authors += " et al."
                     st.markdown(f"**Authors:** {authors}")
+                    if venue:
+                        st.markdown(f"**Journal:** {venue}")
                     if p.get("abstract"):
                         st.markdown(f"**Abstract:** {p['abstract'][:400]}…")
                 with col_b:
@@ -294,10 +303,12 @@ if "papers" in st.session_state:
         ]
         for i, p in enumerate(papers, start=1):
             md_lines.append(f"### {i}. {p.get('title', 'Untitled')}")
+            venue_line = f"- **Journal**: {p['venue']}  \n" if p.get("venue") else ""
             md_lines.append(
                 f"- **Year**: {p.get('year', 'N/A')}  \n"
                 f"- **Authors**: {', '.join(p.get('authors', [])[:5])}  \n"
                 f"- **Source**: {p.get('source', 'N/A')}  \n"
+                + venue_line
             )
             if p.get("summary"):
                 md_lines.append(f"**Summary:**\n{p['summary']}\n")
