@@ -34,22 +34,29 @@ st.set_page_config(
 
 st.sidebar.title("⚙️ Configuration")
 
-openai_key = st.sidebar.text_input(
-    "OpenAI API Key",
-    value=config.OPENAI_API_KEY or "",
+poe_key = st.sidebar.text_input(
+    "POE API Key",
+    value=config.POE_API_KEY or "",
     type="password",
-    help="Required for summarization and idea generation.",
+    help="Required for summarization and idea generation. Get your key at https://poe.com/api_key.",
 )
-if openai_key:
-    config.OPENAI_API_KEY = openai_key
+if poe_key:
+    config.POE_API_KEY = poe_key
 
-openai_model = st.sidebar.selectbox(
-    "OpenAI Model",
-    options=["gpt-4o", "gpt-4", "gpt-3.5-turbo"],
+poe_bot = st.sidebar.selectbox(
+    "POE Bot / Model",
+    options=[
+        "Claude-3.5-Sonnet",
+        "Claude-3-Opus",
+        "Claude-3-Haiku",
+        "GPT-4o",
+        "GPT-4",
+        "GPT-3.5-Turbo",
+    ],
     index=0,
-    help="Model to use for summarization and analysis.",
+    help="The POE bot to use for summarization and analysis.",
 )
-config.OPENAI_MODEL = openai_model
+config.POE_BOT_NAME = poe_bot
 
 st.sidebar.markdown("---")
 
@@ -63,8 +70,8 @@ max_results = st.sidebar.slider(
 
 sources_selected = st.sidebar.multiselect(
     "Search Sources",
-    options=["semantic_scholar", "arxiv"],
-    default=["semantic_scholar", "arxiv"],
+    options=["semantic_scholar", "arxiv", "ssrn"],
+    default=["semantic_scholar", "arxiv", "ssrn"],
 )
 
 skip_download = st.sidebar.checkbox(
@@ -120,10 +127,10 @@ if run_button:
         st.error("Please enter at least one keyword.")
         st.stop()
 
-    if not config.OPENAI_API_KEY:
+    if not config.POE_API_KEY:
         st.warning(
-            "No OpenAI API key provided. Summarization and idea generation will fail. "
-            "Enter your key in the sidebar."
+            "No POE API key provided. Summarization and idea generation will fail. "
+            "Enter your key in the sidebar (get it at poe.com/api_key)."
         )
 
     keywords = [kw.strip() for kw in keywords_input.split() if kw.strip()]

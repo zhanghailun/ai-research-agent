@@ -1,5 +1,5 @@
 """
-summarize.py — LLM-powered paper summarization via OpenAI GPT-4.
+summarize.py — LLM-powered paper summarization via POE API.
 
 Public API
 ----------
@@ -9,32 +9,44 @@ summarize_papers(papers)               -> list[dict]
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
-from openai import OpenAI
+import fastapi_poe as fp
 
 import config
 from extract import truncate_text
 
 logger = logging.getLogger(__name__)
 
+
 # ---------------------------------------------------------------------------
-# OpenAI client (lazy init)
+# POE API helper
 # ---------------------------------------------------------------------------
 
-_client: OpenAI | None = None
+async def _async_call_llm(system_prompt: str, user_prompt: str) -> str:
+    """Async call to POE API; combines system and user prompts."""
+    combined = f"{system_prompt}\n\n{user_prompt}" if system_prompt else user_prompt
+    messages = [fp.ProtocolMessage(role="user", content=combined)]
+    text = ""
+    async for partial in fp.get_bot_response(
+        messages=messages,
+        bot_name=config.POE_BOT_NAME,
+        api_key=config.POE_API_KEY,
+    ):
+        if hasattr(partial, "text"):
+            text += partial.text
+    return text
 
 
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        if not config.OPENAI_API_KEY:
-            raise RuntimeError(
-                "OPENAI_API_KEY is not set. Add it to your .env file or environment."
-            )
-        _client = OpenAI(api_key=config.OPENAI_API_KEY)
-    return _client
+def _call_llm(system_prompt: str, user_prompt: str) -> str:
+    """Synchronous wrapper around the async POE API call."""
+    if not config.POE_API_KEY:
+        raise RuntimeError(
+            "POE_API_KEY is not set. Add it to your .env file or environment."
+        )
+    return asyncio.run(_async_call_llm(system_prompt, user_prompt))
 
 
 # ---------------------------------------------------------------------------
@@ -90,17 +102,7 @@ def summarize_paper(
     )
 
     try:
-        client = _get_client()
-        response = client.chat.completions.create(
-            model=config.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": _SUMMARIZE_SYSTEM},
-                {"role": "user", "content": user_message},
-            ],
-            max_tokens=config.SUMMARIZE_MAX_TOKENS,
-            temperature=0.3,
-        )
-        summary = response.choices[0].message.content or ""
+        summary = _call_llm(_SUMMARIZE_SYSTEM, user_message)
         logger.debug("Summarized paper: %s (%d chars)", title[:60], len(summary))
         return summary.strip()
     except Exception as exc:

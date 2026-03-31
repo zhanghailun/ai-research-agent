@@ -1,10 +1,11 @@
 """
-search.py — Paper discovery via Semantic Scholar and arXiv APIs.
+search.py — Paper discovery via Semantic Scholar, arXiv, and SSRN.
 
 Public API
 ----------
 search_semantic_scholar(keywords, limit) -> list[dict]
 search_arxiv(keywords, limit)           -> list[dict]
+search_ssrn(keywords, limit)            -> list[dict]
 search_all(keywords, limit)             -> list[dict]
 """
 
@@ -17,6 +18,7 @@ from typing import Any
 
 import feedparser
 import requests
+from bs4 import BeautifulSoup
 
 import config
 
@@ -150,6 +152,100 @@ def search_arxiv(keywords: list[str], limit: int = 20) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# SSRN
+# ---------------------------------------------------------------------------
+
+_SSRN_SEARCH_URL = "https://papers.ssrn.com/sol3/results.cfm"
+_SSRN_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (compatible; ai-research-agent/1.0; "
+        "+https://github.com/zhanghailun/ai-research-agent)"
+    ),
+    "Accept-Language": "en-US,en;q=0.9",
+}
+_SSRN_REQUEST_DELAY: float = 0.5  # seconds — be polite to the server
+
+
+def search_ssrn(keywords: list[str], limit: int = 20) -> list[dict[str, Any]]:
+    """
+    Search SSRN for papers matching *keywords* by scraping the HTML search results.
+
+    Returns a normalised list matching the Semantic Scholar format.
+    """
+    import re
+
+    query = " ".join(keywords)
+    params = {"txtSearch": query, "sortBy": "0", "start": "0"}
+
+    logger.info("Searching SSRN for: %s (limit=%d)", query, limit)
+
+    try:
+        resp = requests.get(
+            _SSRN_SEARCH_URL,
+            params=params,
+            headers=_SSRN_HEADERS,
+            timeout=30,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        logger.warning("SSRN search failed: %s", exc)
+        return []
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    results: list[dict[str, Any]] = []
+
+    # SSRN result items are contained in <div class="title"> inside result rows
+    for title_div in soup.select("div.title")[:limit]:
+        link = title_div.find("a", href=True)
+        if not link:
+            continue
+
+        title = link.get_text(strip=True)
+        paper_url: str = link["href"]
+        if paper_url and not paper_url.startswith("http"):
+            paper_url = "https://papers.ssrn.com" + paper_url
+
+        # Walk up to the nearest result container to find metadata
+        container = title_div.find_parent("div", class_="result-item") or title_div.parent
+
+        abstract = ""
+        authors: list[str] = []
+        year: int | None = None
+
+        if container:
+            # Abstract
+            abstract_el = container.find("div", class_=re.compile(r"abstract", re.I))
+            if abstract_el:
+                abstract = abstract_el.get_text(separator=" ", strip=True)
+
+            # Authors
+            for author_tag in container.select("a.author, span.author, .authors a"):
+                name = author_tag.get_text(strip=True)
+                if name:
+                    authors.append(name)
+
+            # Year: look for a 4-digit year in any text within the container
+            date_text = container.get_text(separator=" ")
+            year_match = re.search(r"\b(19|20)\d{2}\b", date_text)
+            if year_match:
+                year = int(year_match.group())
+
+        results.append({
+            "title": title,
+            "abstract": abstract,
+            "year": year,
+            "authors": authors,
+            "doi": "",
+            "url": paper_url,
+            "open_access_pdf": "",
+            "source": "SSRN",
+        })
+
+    logger.info("SSRN returned %d papers", len(results))
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Combined search
 # ---------------------------------------------------------------------------
 
@@ -180,6 +276,10 @@ def search_all(
 
     if "arxiv" in sources:
         all_papers.extend(search_arxiv(keywords, limit=limit))
+
+    if "ssrn" in sources:
+        time.sleep(_SSRN_REQUEST_DELAY)  # Be polite to the server
+        all_papers.extend(search_ssrn(keywords, limit=limit))
 
     if deduplicate:
         seen: set[str] = set()

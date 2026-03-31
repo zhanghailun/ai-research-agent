@@ -140,6 +140,66 @@ class TestSearch:
         # Should have only 1 after deduplication
         assert len(results) == 1
 
+    def test_search_ssrn_success(self):
+        """Mock a successful SSRN HTML response."""
+        from search import search_ssrn
+
+        fake_html = """
+        <html><body>
+        <div class="result-item">
+          <div class="title">
+            <a href="/sol3/papers.cfm?abstract_id=1234">SSRN Test Paper</a>
+          </div>
+          <div class="authors"><a class="author">Alice Smith</a></div>
+          Posted: 15 Jan 2023
+        </div>
+        </body></html>
+        """
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.text = fake_html
+
+        with patch("search.requests.get", return_value=mock_response):
+            results = search_ssrn(["supply chain"], limit=5)
+
+        assert len(results) == 1
+        assert results[0]["title"] == "SSRN Test Paper"
+        assert results[0]["source"] == "SSRN"
+        assert results[0]["year"] == 2023
+        assert "Alice Smith" in results[0]["authors"]
+
+    def test_search_ssrn_failure(self):
+        """Mock a failed SSRN request."""
+        import requests
+        from search import search_ssrn
+
+        with patch("search.requests.get", side_effect=requests.RequestException("timeout")):
+            results = search_ssrn(["test"], limit=5)
+        assert results == []
+
+    def test_search_all_includes_ssrn(self):
+        """Ensure search_all calls SSRN when ssrn is in sources."""
+        from search import search_all
+
+        ssrn_paper = {
+            "title": "SSRN Management Paper",
+            "abstract": "B",
+            "year": 2022,
+            "authors": [],
+            "doi": "",
+            "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=9999",
+            "open_access_pdf": "",
+            "source": "SSRN",
+        }
+
+        with patch("search.search_semantic_scholar", return_value=[]), \
+             patch("search.search_arxiv", return_value=[]), \
+             patch("search.search_ssrn", return_value=[ssrn_paper]):
+            results = search_all(["test"], limit=5, sources=["ssrn"])
+
+        assert len(results) == 1
+        assert results[0]["source"] == "SSRN"
+
 
 # ---------------------------------------------------------------------------
 # download
@@ -254,18 +314,8 @@ class TestExtract:
 class TestSummarize:
     def test_summarize_paper_success(self):
         from summarize import summarize_paper
-        import summarize as summarize_mod
 
-        mock_choice = MagicMock()
-        mock_choice.message.content = "**Main Problem**: Test summary content."
-
-        mock_response = MagicMock()
-        mock_response.choices = [mock_choice]
-
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = mock_response
-
-        with patch.object(summarize_mod, "_client", mock_client):
+        with patch("summarize._call_llm", return_value="**Main Problem**: Test summary content."):
             summary = summarize_paper(
                 text="A paper about supply chains.",
                 title="Test Paper",
@@ -275,11 +325,9 @@ class TestSummarize:
         assert "Main Problem" in summary
 
     def test_summarize_paper_no_api_key(self):
-        import summarize as summarize_mod
         from summarize import summarize_paper
 
-        with patch.object(summarize_mod, "_client", None), \
-             patch("summarize.config.OPENAI_API_KEY", ""):
+        with patch("summarize.config.POE_API_KEY", ""):
             result = summarize_paper("text", "title")
         assert isinstance(result, str)
 
@@ -296,23 +344,13 @@ class TestAnalyze:
 
     def test_analyze_literature_success(self):
         from analyze import analyze_literature
-        import analyze as analyze_mod
 
         papers = [
             {"summary": "Paper 1 summary about supply chain management."},
             {"summary": "Paper 2 summary about sustainability."},
         ]
 
-        mock_choice = MagicMock()
-        mock_choice.message.content = "**Common Themes**: Supply chain and sustainability."
-
-        mock_response = MagicMock()
-        mock_response.choices = [mock_choice]
-
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = mock_response
-
-        with patch.object(analyze_mod, "_client", mock_client):
+        with patch("analyze._call_llm", return_value="**Common Themes**: Supply chain and sustainability."):
             result = analyze_literature(papers, keywords=["supply chain"])
 
         assert "Common Themes" in result
@@ -330,18 +368,8 @@ class TestIdeas:
 
     def test_generate_ideas_success(self):
         from ideas import generate_ideas
-        import ideas as ideas_mod
 
-        mock_choice = MagicMock()
-        mock_choice.message.content = "**Idea 1**: Test research idea about supply chains."
-
-        mock_response = MagicMock()
-        mock_response.choices = [mock_choice]
-
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = mock_response
-
-        with patch.object(ideas_mod, "_client", mock_client):
+        with patch("ideas._call_llm", return_value="**Idea 1**: Test research idea about supply chains."):
             result = generate_ideas(
                 "A good literature analysis.",
                 keywords=["supply chain"],
