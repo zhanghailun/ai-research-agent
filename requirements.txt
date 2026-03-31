@@ -5,8 +5,11 @@ feedparser>=6.0.10
 # PDF extraction
 PyMuPDF>=1.23.0
 
-# OpenAI API
-openai>=1.14.0
+# POE API
+fastapi-poe>=0.0.48
+
+# HTML parsing (for SSRN scraping)
+beautifulsoup4>=4.12.0
 
 # Environment variable management
 python-dotenv>=1.0.0

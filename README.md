@@ -1,6 +1,6 @@
 # 🔬 AI Research Agent
 
-An end-to-end AI agent that automatically searches academic databases, downloads open-access PDFs, summarizes papers using GPT-4, analyzes the literature landscape to identify research gaps, and generates novel management science research ideas.
+An end-to-end AI agent that automatically searches academic databases (Semantic Scholar, arXiv, and SSRN), downloads open-access PDFs, summarizes papers using the POE API, analyzes the literature landscape to identify research gaps, and generates novel management science research ideas.
 
 ---
 
@@ -8,10 +8,10 @@ An end-to-end AI agent that automatically searches academic databases, downloads
 
 | Feature | Details |
 |---------|---------|
-| **Multi-source search** | Semantic Scholar API + arXiv |
+| **Multi-source search** | Semantic Scholar API + arXiv + SSRN |
 | **Automated PDF download** | With retry logic and Unpaywall open-access lookup |
 | **PDF text extraction** | PyMuPDF — fast, layout-aware extraction |
-| **LLM summarization** | GPT-4 / GPT-4o with structured 6-point summaries |
+| **LLM summarization** | POE API (Claude, GPT-4, etc.) with structured 6-point summaries |
 | **Literature analysis** | Cross-paper synthesis, gap identification, trend detection |
 | **Idea generation** | 5 novel, feasible management science research ideas per run |
 | **Web UI** | Interactive Streamlit dashboard |
@@ -28,7 +28,7 @@ keywords
    │
    ▼
 search.py ──────────────────────────────────► paper list
-   │ (Semantic Scholar + arXiv)
+   │ (Semantic Scholar + arXiv + SSRN)
    ▼
 download.py ────────────────────────────────► local PDFs
    │ (requests + retry + Unpaywall fallback)
@@ -37,13 +37,13 @@ extract.py ───────────────────────
    │ (PyMuPDF)
    ▼
 summarize.py ───────────────────────────────► per-paper summaries
-   │ (OpenAI GPT-4)
+   │ (POE API)
    ▼
 analyze.py ─────────────────────────────────► literature landscape
-   │ (OpenAI GPT-4)
+   │ (POE API)
    ▼
 ideas.py ───────────────────────────────────► novel research ideas
-   │ (OpenAI GPT-4, temperature=0.7)
+   │ (POE API, temperature=0.7)
    ▼
 agent.py ───────────────────────────────────► JSON report
 ```
@@ -55,7 +55,7 @@ agent.py ───────────────────────�
 ```
 ai-research-agent/
 ├── agent.py            # Main orchestration pipeline (ResearchAgent class)
-├── search.py           # Paper search via Semantic Scholar & arXiv
+├── search.py           # Paper search via Semantic Scholar, arXiv & SSRN
 ├── download.py         # PDF downloader with retry logic
 ├── extract.py          # PDF text extraction (PyMuPDF)
 ├── summarize.py        # LLM-powered paper summarization
@@ -85,7 +85,7 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env — set OPENAI_API_KEY at minimum
+# Edit .env — set POE_API_KEY at minimum (get it at https://poe.com/api_key)
 ```
 
 ### 3. Run the web UI
@@ -125,8 +125,8 @@ Copy `.env.example` to `.env` and edit:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OPENAI_API_KEY` | *(required)* | OpenAI API key |
-| `OPENAI_MODEL` | `gpt-4o` | Model name |
+| `POE_API_KEY` | *(required)* | POE API key — get at [poe.com/api_key](https://poe.com/api_key) |
+| `POE_BOT_NAME` | `Claude-3.5-Sonnet` | Bot/model name to use |
 | `SEMANTIC_SCHOLAR_API_KEY` | *(optional)* | Higher rate limits |
 | `UNPAYWALL_EMAIL` | `research@example.com` | Required for Unpaywall lookups |
 | `PAPERS_DIR` | `papers` | Where PDFs are saved |
@@ -229,7 +229,7 @@ ideas = generate_ideas(analysis, keywords=["digital platforms"], research_contex
 
 | Problem | Solution |
 |---------|---------|
-| `OPENAI_API_KEY not set` | Add key to `.env` or pass in Streamlit sidebar |
+| `POE_API_KEY not set` | Add key to `.env` or enter in Streamlit sidebar (poe.com/api_key) |
 | No PDFs downloaded | Papers may not be open-access; use `--skip-download` |
 | Rate limit errors | Reduce `DEFAULT_MAX_RESULTS` or add `SEMANTIC_SCHOLAR_API_KEY` |
 | PyMuPDF install fails | Ensure your platform is supported: `pip install PyMuPDF` |
@@ -247,7 +247,8 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 - [Semantic Scholar API](https://api.semanticscholar.org/)
 - [arXiv API](https://arxiv.org/help/api/)
+- [SSRN](https://www.ssrn.com/)
 - [Unpaywall](https://unpaywall.org/)
 - [PyMuPDF](https://pymupdf.readthedocs.io/)
-- [OpenAI](https://platform.openai.com/)
+- [POE API](https://poe.com/api_key)
 - [Streamlit](https://streamlit.io/)
