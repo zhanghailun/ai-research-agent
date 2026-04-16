@@ -46,12 +46,33 @@ if poe_key:
 poe_bot = st.sidebar.selectbox(
     "POE Bot / Model",
     options=[
-        "Claude-3.5-Sonnet",
-        "Claude-3-Opus",
-        "Claude-3-Haiku",
-        "GPT-4o",
-        "GPT-4",
-        "GPT-3.5-Turbo",
+        # --- Anthropic Claude (newest first) ---
+        "Claude-Opus-4",          # Claude Opus 4.6 — latest flagship
+        "Claude-Sonnet-4-5",      # Claude Sonnet 4.5
+        "Claude-Sonnet-4",        # Claude Sonnet 4
+        "Claude-3-7-Sonnet",      # Claude 3.7 Sonnet
+        "Claude-3.5-Sonnet",      # Claude 3.5 Sonnet
+        "Claude-3.5-Haiku",       # Claude 3.5 Haiku
+        "Claude-3-Opus",          # Claude 3 Opus
+        "Claude-3-Haiku",         # Claude 3 Haiku
+        # --- OpenAI GPT (newest first) ---
+        "GPT-5.4",                # GPT-5.4 — latest flagship
+        "GPT-4.1",                # GPT-4.1
+        "GPT-4o",                 # GPT-4o
+        "GPT-4o-Mini",            # GPT-4o Mini
+        "o3",                     # OpenAI o3 (reasoning)
+        "o1",                     # OpenAI o1 (reasoning)
+        "o1-Mini",                # OpenAI o1 Mini
+        "GPT-4",                  # GPT-4
+        "GPT-3.5-Turbo",          # GPT-3.5 Turbo
+        # --- Google Gemini ---
+        "Gemini-2.5-Pro",         # Gemini 2.5 Pro — latest flagship
+        "Gemini-2.0-Flash",       # Gemini 2.0 Flash
+        "Gemini-1.5-Pro",         # Gemini 1.5 Pro
+        "Gemini-1.5-Flash",       # Gemini 1.5 Flash
+        # --- Meta Llama ---
+        "Llama-3.1-405b",         # Llama 3.1 405B
+        "Llama-3.1-70b",          # Llama 3.1 70B
     ],
     index=0,
     help="The POE bot to use for summarization and analysis.",
