@@ -47,14 +47,14 @@ poe_bot = st.sidebar.selectbox(
     "POE Bot / Model",
     options=[
         # --- Anthropic Claude (newest first) ---
-        "Claude-Opus-4",          # Claude Opus 4.6 — latest flagship
-        "Claude-Sonnet-4-5",      # Claude Sonnet 4.5
-        "Claude-Sonnet-4",        # Claude Sonnet 4
+        "Claude-3-5-Sonnet",      # Claude 3.5 Sonnet — recommended default
         "Claude-3-7-Sonnet",      # Claude 3.7 Sonnet
-        "Claude-3.5-Sonnet",      # Claude 3.5 Sonnet
-        "Claude-3.5-Haiku",       # Claude 3.5 Haiku
         "Claude-3-Opus",          # Claude 3 Opus
+        "Claude-3-5-Haiku",       # Claude 3.5 Haiku
         "Claude-3-Haiku",         # Claude 3 Haiku
+        "Claude-Sonnet-4",        # Claude Sonnet 4 (requires subscription)
+        "Claude-Sonnet-4-5",      # Claude Sonnet 4.5 (requires subscription)
+        "Claude-Opus-4",          # Claude Opus 4 (requires subscription)
         # --- OpenAI GPT (newest first) ---
         "GPT-5.4",                # GPT-5.4 — latest flagship
         "GPT-4.1",                # GPT-4.1

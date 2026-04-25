@@ -29,13 +29,24 @@ def _call_llm(system_prompt: str, user_prompt: str) -> str:
     combined = f"{system_prompt}\n\n{user_prompt}" if system_prompt else user_prompt
     messages = [fp.ProtocolMessage(role="user", content=combined)]
     text = ""
-    for partial in fp.get_bot_response_sync(
-        messages=messages,
-        bot_name=config.POE_BOT_NAME,
-        api_key=config.POE_API_KEY,
-    ):
-        if hasattr(partial, "text"):
-            text += partial.text
+    try:
+        for partial in fp.get_bot_response_sync(
+            messages=messages,
+            bot_name=config.POE_BOT_NAME,
+            api_key=config.POE_API_KEY,
+        ):
+            if hasattr(partial, "text"):
+                text += partial.text
+    except fp.BotError as exc:
+        exc_str = str(exc)
+        if "403" in exc_str or "Forbidden" in exc_str or "SSEError" in exc_str:
+            raise RuntimeError(
+                f"Poe API returned 403 Forbidden for bot '{config.POE_BOT_NAME}'. "
+                "The bot may not exist or your API key may not have access to it. "
+                "Try a different bot (e.g. Claude-3-5-Sonnet) in the sidebar, "
+                "or check your Poe subscription at https://poe.com/api_key."
+            ) from exc
+        raise
     return text
 
 
