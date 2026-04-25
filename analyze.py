@@ -8,7 +8,6 @@ analyze_literature(summaries, keywords) -> str
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
@@ -22,12 +21,16 @@ logger = logging.getLogger(__name__)
 # POE API helper
 # ---------------------------------------------------------------------------
 
-async def _async_call_llm(system_prompt: str, user_prompt: str) -> str:
-    """Async call to POE API; combines system and user prompts."""
+def _call_llm(system_prompt: str, user_prompt: str) -> str:
+    """Synchronous call to POE API via get_bot_response_sync."""
+    if not config.POE_API_KEY:
+        raise RuntimeError(
+            "POE_API_KEY is not set. Add it to your .env file or environment."
+        )
     combined = f"{system_prompt}\n\n{user_prompt}" if system_prompt else user_prompt
     messages = [fp.ProtocolMessage(role="user", content=combined)]
     text = ""
-    async for partial in fp.get_bot_response(
+    for partial in fp.get_bot_response_sync(
         messages=messages,
         bot_name=config.POE_BOT_NAME,
         api_key=config.POE_API_KEY,
@@ -35,15 +38,6 @@ async def _async_call_llm(system_prompt: str, user_prompt: str) -> str:
         if hasattr(partial, "text"):
             text += partial.text
     return text
-
-
-def _call_llm(system_prompt: str, user_prompt: str) -> str:
-    """Synchronous wrapper around the async POE API call."""
-    if not config.POE_API_KEY:
-        raise RuntimeError(
-            "POE_API_KEY is not set. Add it to your .env file or environment."
-        )
-    return asyncio.run(_async_call_llm(system_prompt, user_prompt))
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +86,10 @@ def analyze_literature(
 
     Returns the analysis text.
     """
-    summaries = [p.get("summary", "") for p in papers if p.get("summary")]
+    summaries = [
+        summary for p in papers
+        if (summary := p.get("summary", "")) and not summary.startswith("[")
+    ]
     if not summaries:
         return "[No summaries available for analysis]"
 
