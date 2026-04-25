@@ -240,8 +240,8 @@ if "papers" in st.session_state:
     novel_ideas = st.session_state.get("novel_ideas", "")
     keywords = st.session_state.get("keywords", [])
 
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["📚 Papers", "🔍 Literature Analysis", "💡 Novel Ideas", "📥 Export"]
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        ["📚 Papers", "🔍 Literature Analysis", "💡 Novel Ideas", "📝 Proposal Writer", "📥 Export"]
     )
 
     # ── Tab 1: Papers ─────────────────────────────────────────────────
@@ -292,9 +292,90 @@ if "papers" in st.session_state:
         else:
             st.info("Run the pipeline to see generated ideas.")
 
-    # ── Tab 4: Export ─────────────────────────────────────────────────
+    # ── Tab 4: Proposal Writer ────────────────────────────────────────
     with tab4:
+        st.subheader("📝 INFORMS-Style Paper Proposal Writer")
+        st.markdown(
+            "Generate a full paper proposal in the style of *Management Science*, "
+            "*Operations Research*, or *MSOM* — grounded in the INFORMS writing guide."
+        )
+
+        proposal_source = st.radio(
+            "Proposal idea source",
+            options=["Use a generated idea from the pipeline", "Enter a custom idea"],
+            horizontal=True,
+        )
+
+        if proposal_source == "Use a generated idea from the pipeline":
+            if novel_ideas:
+                # Parse individual ideas by the "**Idea N:" marker
+                idea_parts = [p for p in novel_ideas.split("**Idea ") if p.strip()]
+                if idea_parts:
+                    idea_labels = [
+                        ("**Idea " + p).split("\n")[0].strip() for p in idea_parts
+                    ]
+                    selected_label = st.selectbox("Select an idea", idea_labels)
+                    idea_idx = idea_labels.index(selected_label)
+                    proposal_idea = "**Idea " + idea_parts[idea_idx]
+                else:
+                    proposal_idea = novel_ideas
+                    st.info("Using the full ideas text as input.")
+            else:
+                st.warning("No ideas available yet — run the pipeline first.")
+                proposal_idea = ""
+        else:
+            proposal_idea = st.text_area(
+                "Your research idea",
+                placeholder=(
+                    "e.g. How does platform opacity over product bundles affect "
+                    "consumer welfare and firm profitability in e-commerce settings?"
+                ),
+                height=150,
+            )
+
+        proposal_context = st.text_input(
+            "Additional context (optional)",
+            placeholder="e.g. Focus on two-sided platforms in the gig economy",
+            key="proposal_additional_context",
+        )
+
+        generate_proposal_btn = st.button(
+            "✍️ Generate Proposal", type="primary", use_container_width=True
+        )
+
+        if generate_proposal_btn:
+            if not proposal_idea.strip():
+                st.error("Please provide a research idea.")
+            elif not config.POE_API_KEY:
+                st.warning(
+                    "No POE API key provided. Enter your key in the sidebar."
+                )
+            else:
+                from propose import generate_proposal as _generate_proposal
+
+                effective_context = proposal_context or research_context
+                with st.spinner("Generating INFORMS-style proposal… (this may take a minute)"):
+                    proposal_text = _generate_proposal(
+                        idea=proposal_idea,
+                        research_context=effective_context,
+                        literature_analysis=literature_analysis,
+                    )
+                st.session_state["proposal"] = proposal_text
+
+        if "proposal" in st.session_state and st.session_state["proposal"]:
+            st.markdown("---")
+            st.markdown(st.session_state["proposal"])
+            st.download_button(
+                label="⬇️ Download Proposal (Markdown)",
+                data=st.session_state["proposal"],
+                file_name=f"proposal_{'_'.join(keywords[:3])}.md",
+                mime="text/markdown",
+            )
+
+    # ── Tab 5: Export ─────────────────────────────────────────────────
+    with tab5:
         st.subheader("Export Results")
+        proposal_for_export = st.session_state.get("proposal", "")
         report = {
             "keywords": keywords,
             "papers_found": len(papers),
@@ -305,6 +386,8 @@ if "papers" in st.session_state:
                 for p in papers
             ],
         }
+        if proposal_for_export:
+            report["proposal"] = proposal_for_export
         report_json = json.dumps(report, indent=2, ensure_ascii=False)
         st.download_button(
             label="⬇️ Download JSON Report",
@@ -314,26 +397,30 @@ if "papers" in st.session_state:
         )
 
         st.markdown("**Markdown report:**")
-        md_lines = [
-            f"# Research Report: {', '.join(keywords)}\n",
-            "## Literature Analysis\n",
-            literature_analysis or "N/A",
-            "\n## Novel Research Ideas\n",
-            novel_ideas or "N/A",
-            "\n## Papers\n",
-        ]
+        proposal_section = ["\n## Paper Proposal\n", proposal_for_export] if proposal_for_export else []
+        paper_lines: list[str] = []
         for i, p in enumerate(papers, start=1):
-            md_lines.append(f"### {i}. {p.get('title', 'Untitled')}")
+            paper_lines.append(f"### {i}. {p.get('title', 'Untitled')}")
             venue_line = f"- **Journal**: {p['venue']}  \n" if p.get("venue") else ""
-            md_lines.append(
+            paper_lines.append(
                 f"- **Year**: {p.get('year', 'N/A')}  \n"
                 f"- **Authors**: {', '.join(p.get('authors', [])[:5])}  \n"
                 f"- **Source**: {p.get('source', 'N/A')}  \n"
                 + venue_line
             )
             if p.get("summary"):
-                md_lines.append(f"**Summary:**\n{p['summary']}\n")
+                paper_lines.append(f"**Summary:**\n{p['summary']}\n")
 
+        md_lines = [
+            f"# Research Report: {', '.join(keywords)}\n",
+            "## Literature Analysis\n",
+            literature_analysis or "N/A",
+            "\n## Novel Research Ideas\n",
+            novel_ideas or "N/A",
+            *proposal_section,
+            "\n## Papers\n",
+            *paper_lines,
+        ]
         md_report = "\n".join(md_lines)
         st.download_button(
             label="⬇️ Download Markdown Report",

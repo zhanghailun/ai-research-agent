@@ -27,6 +27,7 @@ from analyze import analyze_literature
 from download import download_papers
 from extract import extract_papers
 from ideas import generate_ideas
+from propose import generate_proposal
 from search import search_all
 from summarize import summarize_papers
 
@@ -40,7 +41,8 @@ class ResearchAgent:
 
     Pipeline
     --------
-    search → download → extract → summarize → analyze → generate ideas → save report
+    search → download → extract → summarize → analyze → generate ideas
+    → (optional) generate proposal → save report
     """
 
     def __init__(
@@ -64,6 +66,7 @@ class ResearchAgent:
         sources: list[str] | None = None,
         skip_download: bool = False,
         save_report: bool = True,
+        write_proposal: bool = False,
     ) -> dict[str, Any]:
         """
         Execute the full research pipeline.
@@ -76,11 +79,14 @@ class ResearchAgent:
         sources          : ["semantic_scholar", "arxiv"] or a subset
         skip_download    : if True, skip PDF downloading (use abstract only)
         save_report      : persist the JSON report to output_dir
+        write_proposal   : if True, generate an INFORMS-style proposal for the
+                           top idea and include it in the report
 
         Returns
         -------
         A dict with keys: keywords, papers_found, papers_with_pdf,
-        papers_summarized, literature_analysis, novel_ideas, papers, timestamp
+        papers_summarized, literature_analysis, novel_ideas,
+        proposal (if write_proposal=True), papers, timestamp
         """
         limit = max_results or config.DEFAULT_MAX_RESULTS
         logger.info("=== Research Agent starting ===")
@@ -127,6 +133,16 @@ class ResearchAgent:
             research_context=research_context,
         )
 
+        # ── 7. (Optional) Generate proposal ───────────────────────────
+        proposal = ""
+        if write_proposal and novel_ideas and not novel_ideas.startswith("["):
+            logger.info("[7/7] Generating INFORMS-style paper proposal…")
+            proposal = generate_proposal(
+                idea=novel_ideas,
+                research_context=research_context,
+                literature_analysis=literature_analysis,
+            )
+
         # ── Compile report ─────────────────────────────────────────────
         report: dict[str, Any] = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -139,6 +155,8 @@ class ResearchAgent:
             "novel_ideas": novel_ideas,
             "papers": self._strip_large_fields(papers),
         }
+        if write_proposal:
+            report["proposal"] = proposal
 
         if save_report:
             self._save_report(report, keywords)
@@ -186,6 +204,7 @@ def run_research(
     research_context: str = "",
     max_results: int = 20,
     skip_download: bool = False,
+    write_proposal: bool = False,
 ) -> dict[str, Any]:
     """Shortcut: create a ResearchAgent and run the full pipeline."""
     config.setup_logging()
@@ -195,6 +214,7 @@ def run_research(
         research_context=research_context,
         max_results=max_results,
         skip_download=skip_download,
+        write_proposal=write_proposal,
     )
 
 
