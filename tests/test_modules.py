@@ -777,7 +777,7 @@ class TestPropose:
         assert result.exit_code == 0
         assert "Proposal text" in result.output
         # Verify the first idea was passed in
-        called_idea = mock_prop.call_args[1]["idea"] if mock_prop.call_args[1] else mock_prop.call_args[0][0]
+        called_idea = mock_prop.call_args.kwargs.get("idea") or mock_prop.call_args.args[0]
         assert "First Idea" in called_idea
 
     def test_propose_cli_command_no_input(self):
