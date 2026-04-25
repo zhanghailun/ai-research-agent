@@ -14,7 +14,8 @@ An end-to-end AI agent that automatically searches academic databases (Semantic 
 | **LLM summarization** | POE API (Claude, GPT-4, etc.) with structured 6-point summaries |
 | **Literature analysis** | Cross-paper synthesis, gap identification, trend detection |
 | **Idea generation** | 5 novel, feasible management science research ideas per run |
-| **Web UI** | Interactive Streamlit dashboard |
+| **Proposal writer** | Full INFORMS-style paper proposals driven by `management_science_writing_skill.md` |
+| **Web UI** | Interactive Streamlit dashboard with a dedicated Proposal Writer tab |
 | **CLI** | Full-featured command-line interface |
 | **Configurable** | `.env`-based settings for all parameters |
 | **Robust** | Comprehensive error handling and logging throughout |
@@ -45,6 +46,9 @@ analyze.py ───────────────────────
 ideas.py ───────────────────────────────────► novel research ideas
    │ (POE API, temperature=0.7)
    ▼
+propose.py ─────────────────────────────────► INFORMS-style paper proposal
+   │ (POE API + management_science_writing_skill.md)
+   ▼
 agent.py ───────────────────────────────────► JSON report
 ```
 
@@ -54,19 +58,21 @@ agent.py ───────────────────────�
 
 ```
 ai-research-agent/
-├── agent.py            # Main orchestration pipeline (ResearchAgent class)
-├── search.py           # Paper search via Semantic Scholar, arXiv & SSRN
-├── download.py         # PDF downloader with retry logic
-├── extract.py          # PDF text extraction (PyMuPDF)
-├── summarize.py        # LLM-powered paper summarization
-├── analyze.py          # Literature landscape analysis
-├── ideas.py            # Novel research idea generation
-├── config.py           # Configuration management (.env loader)
-├── streamlit_app.py    # Interactive web UI
-├── cli.py              # Command-line interface
-├── requirements.txt    # Python dependencies
-├── .env.example        # Environment variable template
-└── README.md           # This file
+├── agent.py                          # Main orchestration pipeline (ResearchAgent class)
+├── search.py                         # Paper search via Semantic Scholar, arXiv & SSRN
+├── download.py                       # PDF downloader with retry logic
+├── extract.py                        # PDF text extraction (PyMuPDF)
+├── summarize.py                      # LLM-powered paper summarization
+├── analyze.py                        # Literature landscape analysis
+├── ideas.py                          # Novel research idea generation
+├── propose.py                        # INFORMS-style paper proposal generator
+├── management_science_writing_skill.md  # INFORMS writing style guide (injected as system prompt)
+├── config.py                         # Configuration management (.env loader)
+├── streamlit_app.py                  # Interactive web UI
+├── cli.py                            # Command-line interface
+├── requirements.txt                  # Python dependencies
+├── .env.example                      # Environment variable template
+└── README.md                         # This file
 ```
 
 ---
@@ -112,6 +118,12 @@ python cli.py search "operations management" --limit 10
 
 # Summarize a single PDF
 python cli.py summarize path/to/paper.pdf --title "My Paper"
+
+# Generate a proposal from a free-text idea
+python cli.py propose "How does platform opacity affect consumer welfare in e-commerce?"
+
+# Generate a proposal from a saved report (first idea, save to file)
+python cli.py propose --from-report output/report_*.json -i 1 -o proposal.md
 
 # View a saved report
 python cli.py report output/report_supply-chain_20240101_120000.json

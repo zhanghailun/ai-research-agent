@@ -262,6 +262,112 @@ def report_command(report_path: Path, section: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# propose command
+# ---------------------------------------------------------------------------
+
+@cli.command("propose")
+@click.argument("idea", required=False, default="")
+@click.option(
+    "--context",
+    "-c",
+    default="",
+    help="Free-text research context / focus area.",
+)
+@click.option(
+    "--from-report",
+    "report_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Load the research idea from a saved JSON report.",
+)
+@click.option(
+    "--idea-index",
+    "-i",
+    default=1,
+    show_default=True,
+    help="Which idea to use from --from-report (1-based; pass 0 to use the full ideas text).",
+)
+@click.option(
+    "--output",
+    "-o",
+    "output_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Save the proposal to this Markdown file.",
+)
+def propose_command(
+    idea: str,
+    context: str,
+    report_path: Path | None,
+    idea_index: int,
+    output_path: Path | None,
+) -> None:
+    """Generate an INFORMS top-journal style paper proposal.
+
+    Pass a research IDEA as a free-text argument, or load one from a saved
+    report with --from-report.  When both are given, IDEA takes precedence.
+
+    Examples\b
+
+      # Free-text idea
+      python cli.py propose "How does platform opacity affect consumer welfare?"
+
+      # From a saved report (first idea)
+      python cli.py propose --from-report output/report_*.json
+
+      # Second idea from report, save to file
+      python cli.py propose --from-report output/report_*.json -i 2 -o proposal.md
+    """
+    from propose import generate_proposal
+
+    literature_analysis = ""
+
+    if report_path and not idea.strip():
+        with open(report_path, encoding="utf-8") as fh:
+            report = json.load(fh)
+        raw_ideas = report.get("novel_ideas", "")
+        literature_analysis = report.get("literature_analysis", "")
+
+        if idea_index == 0 or not raw_ideas:
+            idea = raw_ideas
+        else:
+            # Split on "**Idea " markers and take the requested one
+            parts = [p for p in raw_ideas.split("**Idea ") if p.strip()]
+            if 1 <= idea_index <= len(parts):
+                idea = "**Idea " + parts[idea_index - 1]
+            else:
+                idea = raw_ideas
+                click.echo(
+                    f"⚠️  Idea index {idea_index} out of range "
+                    f"({len(parts)} ideas found); using full text.",
+                    err=True,
+                )
+
+    if not idea.strip():
+        click.echo(
+            "❌ Please provide a research idea as an argument or via --from-report.",
+            err=True,
+        )
+        sys.exit(1)
+
+    click.echo("✍️  Generating INFORMS-style paper proposal…", err=True)
+    proposal = generate_proposal(
+        idea=idea,
+        research_context=context,
+        literature_analysis=literature_analysis,
+    )
+
+    click.echo("\n" + "=" * 60)
+    click.echo("PAPER PROPOSAL")
+    click.echo("=" * 60)
+    click.echo(proposal)
+
+    if output_path:
+        output_path.write_text(proposal, encoding="utf-8")
+        click.echo(f"\n💾 Proposal saved → {output_path}", err=True)
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 

@@ -675,3 +675,197 @@ class TestCLI:
         result = runner.invoke(cli, ["report", str(report_file), "--section", "analysis"])
         assert result.exit_code == 0
         assert "Test analysis" in result.output
+
+
+# ---------------------------------------------------------------------------
+# propose
+# ---------------------------------------------------------------------------
+
+class TestPropose:
+    def test_generate_proposal_success(self):
+        """generate_proposal() calls the LLM and returns its text."""
+        from propose import generate_proposal
+
+        with patch("propose._call_llm", return_value="## 1. Title\nTest Proposal") as mock_llm:
+            result = generate_proposal(
+                idea="Platform opacity and consumer welfare",
+                research_context="Focus on e-commerce",
+                literature_analysis="Lit review here",
+            )
+
+        assert "Test Proposal" in result
+        mock_llm.assert_called_once()
+        # Verify the writing guide is injected into the system prompt
+        system_prompt = mock_llm.call_args[0][0]
+        assert "INFORMS" in system_prompt or "Management Science" in system_prompt
+
+    def test_generate_proposal_no_api_key(self):
+        """generate_proposal() returns an error string when the LLM raises."""
+        from propose import generate_proposal
+
+        with patch("propose._call_llm", side_effect=RuntimeError("No key")):
+            result = generate_proposal(idea="Some idea")
+
+        assert result.startswith("[Proposal generation failed")
+
+    def test_generate_proposal_empty_idea(self):
+        """generate_proposal() returns an error string for blank input."""
+        from propose import generate_proposal
+
+        result = generate_proposal(idea="")
+        assert result.startswith("[Cannot generate proposal")
+
+        result2 = generate_proposal(idea="   ")
+        assert result2.startswith("[Cannot generate proposal")
+
+    def test_load_writing_guide_present(self, tmp_path, monkeypatch):
+        """_load_writing_guide() reads the skill file when it exists."""
+        import propose as propose_module
+
+        skill_file = tmp_path / "management_science_writing_skill.md"
+        skill_file.write_text("# Guide\nSome content", encoding="utf-8")
+        monkeypatch.setattr(propose_module, "_SKILL_PATH", skill_file)
+
+        from propose import _load_writing_guide
+        guide = _load_writing_guide()
+        assert "Some content" in guide
+
+    def test_load_writing_guide_missing(self, tmp_path, monkeypatch):
+        """_load_writing_guide() returns '' when the file is not found."""
+        import propose as propose_module
+
+        monkeypatch.setattr(propose_module, "_SKILL_PATH", tmp_path / "missing.md")
+
+        from propose import _load_writing_guide
+        guide = _load_writing_guide()
+        assert guide == ""
+
+    def test_propose_cli_command_free_text(self):
+        """CLI propose command works with a free-text idea argument."""
+        from click.testing import CliRunner
+        from cli import cli
+
+        with patch("propose.generate_proposal", return_value="## 1. Title\nTest Proposal"):
+            runner = CliRunner()
+            result = runner.invoke(cli, ["propose", "My research idea"])
+
+        assert result.exit_code == 0
+        assert "Test Proposal" in result.output
+
+    def test_propose_cli_command_from_report(self, tmp_path):
+        """CLI propose command loads an idea from a saved report."""
+        from click.testing import CliRunner
+        from cli import cli
+
+        report_data = {
+            "keywords": ["supply chain"],
+            "literature_analysis": "Some analysis",
+            "novel_ideas": (
+                "**Idea 1: First Idea**\n- Research Question: ...\n\n"
+                "**Idea 2: Second Idea**\n- Research Question: ..."
+            ),
+        }
+        report_file = tmp_path / "report_test.json"
+        report_file.write_text(json.dumps(report_data))
+
+        with patch("propose.generate_proposal", return_value="Proposal text") as mock_prop:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli, ["propose", "--from-report", str(report_file), "-i", "1"]
+            )
+
+        assert result.exit_code == 0
+        assert "Proposal text" in result.output
+        # Verify the first idea was passed in
+        called_idea = mock_prop.call_args[1]["idea"] if mock_prop.call_args[1] else mock_prop.call_args[0][0]
+        assert "First Idea" in called_idea
+
+    def test_propose_cli_command_no_input(self):
+        """CLI propose command exits with error when no idea is given."""
+        from click.testing import CliRunner
+        from cli import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["propose"])
+        assert result.exit_code != 0
+
+    def test_propose_cli_saves_output_file(self, tmp_path):
+        """CLI propose command writes the proposal to a file when --output is set."""
+        from click.testing import CliRunner
+        from cli import cli
+
+        output_file = tmp_path / "my_proposal.md"
+
+        with patch("propose.generate_proposal", return_value="Saved proposal"):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["propose", "Some idea", "--output", str(output_file)],
+            )
+
+        assert result.exit_code == 0
+        assert output_file.exists()
+        assert output_file.read_text(encoding="utf-8") == "Saved proposal"
+
+    def test_agent_write_proposal_flag(self, tmp_path):
+        """ResearchAgent.run() calls generate_proposal when write_proposal=True."""
+        from agent import ResearchAgent
+
+        agent = ResearchAgent(
+            papers_dir=tmp_path / "papers", output_dir=tmp_path / "output"
+        )
+
+        mock_paper = {
+            "title": "A paper",
+            "abstract": "Abstract",
+            "year": 2023,
+            "authors": ["Alice"],
+            "doi": "",
+            "url": "",
+            "open_access_pdf": "",
+            "local_pdf": "",
+            "extracted_text": "",
+            "summary": "Summary of the paper.",
+            "source": "test",
+        }
+
+        with patch("agent.search_all", return_value=[mock_paper]), \
+             patch("agent.download_papers", return_value=[mock_paper]), \
+             patch("agent.extract_papers", side_effect=lambda p: p), \
+             patch("agent.summarize_papers", side_effect=lambda p: p), \
+             patch("agent.analyze_literature", return_value="Mock analysis"), \
+             patch("agent.generate_ideas", return_value="Mock ideas"), \
+             patch("agent.generate_proposal", return_value="Mock proposal") as mock_prop:
+
+            report = agent.run(
+                keywords=["test"],
+                write_proposal=True,
+                save_report=False,
+            )
+
+        mock_prop.assert_called_once()
+        assert report["proposal"] == "Mock proposal"
+
+    def test_agent_no_proposal_by_default(self, tmp_path):
+        """ResearchAgent.run() does NOT call generate_proposal by default."""
+        from agent import ResearchAgent
+
+        agent = ResearchAgent(
+            papers_dir=tmp_path / "papers", output_dir=tmp_path / "output"
+        )
+
+        with patch("agent.search_all", return_value=[]), \
+             patch("agent.extract_papers", side_effect=lambda p: p), \
+             patch("agent.summarize_papers", side_effect=lambda p: p), \
+             patch("agent.analyze_literature", return_value="Analysis"), \
+             patch("agent.generate_ideas", return_value="Ideas"), \
+             patch("agent.generate_proposal") as mock_prop:
+
+            report = agent.run(
+                keywords=["test"],
+                skip_download=True,
+                save_report=False,
+            )
+
+        mock_prop.assert_not_called()
+        assert "proposal" not in report
