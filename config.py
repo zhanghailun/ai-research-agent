@@ -15,7 +15,7 @@ load_dotenv(Path(__file__).parent / ".env")
 # POE API
 # ---------------------------------------------------------------------------
 POE_API_KEY: str = os.getenv("POE_API_KEY", "")
-POE_BOT_NAME: str = os.getenv("POE_BOT_NAME", "Claude-Opus-4")
+POE_BOT_NAME: str = os.getenv("POE_BOT_NAME", "Claude-3-5-Sonnet")
 
 # ---------------------------------------------------------------------------
 # Semantic Scholar
